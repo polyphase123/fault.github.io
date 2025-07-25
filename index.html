@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three-Phase Fault Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            color: #f3f4f6; /* text-gray-200 */
+        }
+        .control-panel {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem; /* p-6 */
+            margin-bottom: 1.5rem; /* mb-6 */
+            border: 1px solid #374151; /* border-gray-700 */
+        }
+        .canvas-container {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem; /* p-6 */
+            border: 1px solid #374151; /* border-gray-700 */
+        }
+        canvas {
+            background-color: #000;
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        label {
+            color: #d1d5db; /* text-gray-300 */
+        }
+        select, input[type="range"] {
+            background-color: #374151; /* bg-gray-700 */
+            border-color: #4b5563; /* border-gray-600 */
+            color: #f3f4f6; /* text-gray-200 */
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 1.5rem; /* mr-6 */
+            font-size: 0.875rem; /* text-sm */
+        }
+        .legend-color {
+            width: 1rem; /* w-4 */
+            height: 1rem; /* h-4 */
+            margin-right: 0.5rem; /* mr-2 */
+            border-radius: 0.25rem; /* rounded-sm */
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 lg:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Three-Phase Fault Simulator</h1>
+            <p class="text-lg text-gray-400 mt-2">Visualize voltage and current waveforms under different fault conditions.</p>
+        </header>
+
+        <!-- Controls -->
+        <div class="control-panel grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="faultType" class="block mb-2 text-sm font-medium">Fault Type</label>
+                <select id="faultType" class="w-full p-2.5 rounded-lg border focus:ring-blue-500 focus:border-blue-500">
+                    <option value="normal">Normal Operation</option>
+                    <option value="lg">Single Line-to-Ground (L-G on Phase A)</option>
+                    <option value="ll">Line-to-Line (L-L on Phases A-B)</option>
+                    <option value="llg">Double Line-to-Ground (LL-G on Phases A-B)</option>
+                    <option value="lll">Symmetrical Three-Phase (LLL)</option>
+                </select>
+            </div>
+            <div>
+                <label for="faultInception" class="block mb-2 text-sm font-medium">Fault Inception Time (ms)</label>
+                <div class="flex items-center">
+                    <input id="faultInception" type="range" min="0" max="100" value="50" class="w-full h-2 rounded-lg appearance-none cursor-pointer">
+                    <span id="faultInceptionValue" class="ml-4 w-12 text-center">50 ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voltage Waveform -->
+        <div class="canvas-container mb-6">
+            <h2 class="text-2xl font-semibold mb-4 text-white">Voltage Waveforms</h2>
+            <canvas id="voltageCanvas"></canvas>
+            <div id="voltageLegend" class="flex flex-wrap mt-4"></div>
+        </div>
+
+        <!-- Current Waveform -->
+        <div class="canvas-container">
+            <h2 class="text-2xl font-semibold mb-4 text-white">Current Waveforms</h2>
+            <canvas id="currentCanvas"></canvas>
+            <div id="currentLegend" class="flex flex-wrap mt-4"></div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Elements ---
+        const faultTypeSelect = document.getElementById('faultType');
+        const faultInceptionSlider = document.getElementById('faultInception');
+        const faultInceptionValue = document.getElementById('faultInceptionValue');
+
+        const voltageCanvas = document.getElementById('voltageCanvas');
+        const vCtx = voltageCanvas.getContext('2d');
+        const currentCanvas = document.getElementById('currentCanvas');
+        const cCtx = currentCanvas.getContext('2d');
+
+        // --- Simulation Parameters (Updated as per user request) ---
+        const V_PEAK = 13200; // Peak Phase Voltage
+        const I_PEAK = 438;  // Peak Phase Current (437.9A)
+        const FREQUENCY = 50; // Hz
+        const OMEGA = 2 * Math.PI * FREQUENCY;
+        const TIME_SPAN = 0.1; // 100ms
+        const POWER_FACTOR_ANGLE = -Math.PI / 6; // 30 degrees lagging
+
+        let time = 0;
+        let animationFrameId;
+
+        const phases = [
+            { name: 'A', color: '#ef4444' }, // Red-500
+            { name: 'B', color: '#eab308' }, // Yellow-500
+            { name: 'C', color: '#3b82f6' }, // Blue-500
+        ];
+
+        // --- UI Setup ---
+        faultInceptionSlider.addEventListener('input', (e) => {
+            faultInceptionValue.textContent = `${e.target.value} ms`;
+        });
+
+        const createLegend = (containerId, prefix) => {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            phases.forEach(phase => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `<div class="legend-color" style="background-color: ${phase.color};"></div><span>${prefix}${phase.name}</span>`;
+                container.appendChild(item);
+            });
+        };
+
+        createLegend('voltageLegend', 'V');
+        createLegend('currentLegend', 'I');
+
+        // --- Canvas Sizing and Resizing ---
+        function resizeCanvases() {
+            const dpr = window.devicePixelRatio || 1;
+            const containerWidth = voltageCanvas.parentElement.clientWidth - 48; // p-6 on parent
+            
+            [voltageCanvas, currentCanvas].forEach(canvas => {
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = containerWidth * dpr;
+                canvas.height = (containerWidth * 0.4) * dpr; // Maintain aspect ratio
+                canvas.style.width = `${containerWidth}px`;
+                canvas.style.height = `${containerWidth * 0.4}px`;
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+            });
+            draw(); // Redraw after resize
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+        
+        // --- Core Drawing Logic ---
+        function drawGrid(ctx, canvas, scale, unit) {
+            const width = canvas.width / (window.devicePixelRatio || 1);
+            const height = canvas.height / (window.devicePixelRatio || 1);
+            
+            // --- Style for grid and labels ---
+            ctx.strokeStyle = '#374151'; // gray-700
+            ctx.lineWidth = 0.5;
+            ctx.fillStyle = '#9ca3af'; // gray-400
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+
+            // --- Draw vertical lines ---
+            for (let i = 0; i <= 20; i++) {
+                const x = i * width / 20;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            // --- Draw horizontal lines and Y-axis labels ---
+            const numYLines = 10; // Total number of horizontal lines
+            for (let i = 0; i <= numYLines; i++) {
+                const y = i * height / numYLines;
+                
+                // Draw grid line
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+
+                // Calculate the value for the current line
+                const value = scale - (i * (2 * scale) / numYLines);
+                // Format large numbers into k-units (kV, kA)
+                const displayValue = Math.abs(value) >= 1000 ? `${(value/1000).toFixed(1)}k` : value.toFixed(0);
+                ctx.fillText(`${displayValue}${unit}`, 5, y);
+            }
+
+            // --- Redraw center line to be thicker ---
+            ctx.strokeStyle = '#6b7280'; // gray-500
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+
+        function calculateWaveforms(t, faultType, faultTime) {
+            const isFaulted = t >= faultTime;
+            
+            // --- Base Waveforms (Normal Operation) ---
+            let va = V_PEAK * Math.sin(OMEGA * t);
+            let vb = V_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3);
+            let vc = V_PEAK * Math.sin(OMEGA * t + 2 * Math.PI / 3);
+
+            let ia = I_PEAK * Math.sin(OMEGA * t + POWER_FACTOR_ANGLE);
+            let ib = I_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
+            let ic = I_PEAK * Math.sin(OMEGA * t + 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
+
+            // --- Apply Fault Conditions ---
+            if (isFaulted) {
+                switch(faultType) {
+                    case 'lg': // Line-to-Ground on A
+                        va = 0;
+                        ia *= 5; // Simplified spike in current
+                        break;
+                    case 'll': // Line-to-Line on A-B
+                        va = vb = (V_PEAK * Math.sin(OMEGA * t) + V_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3)) / 2;
+                        ia *= 3;
+                        ib = -ia;
+                        break;
+                    case 'llg': // Double Line-to-Ground on A-B
+                        va = 0;
+                        vb = 0;
+                        ia *= 4;
+                        ib *= 4;
+                        break;
+                    case 'lll': // Symmetrical Three-Phase
+                        va = 0;
+                        vb = 0;
+                        vc = 0;
+                        ia *= 6;
+                        ib *= 6;
+                        ic *= 6;
+                        break;
+                }
+            }
+
+            return { voltages: { a: va, b: vb, c: vc }, currents: { a: ia, b: ib, c: ic } };
+        }
+
+        function draw() {
+            const faultType = faultTypeSelect.value;
+            const faultInceptionTime = parseInt(faultInceptionSlider.value) / 1000; // convert ms to s
+
+            const canvases = [
+                { ctx: vCtx, canvas: voltageCanvas, type: 'voltages', scale: V_PEAK * 1.1, unit: 'V' },
+                { ctx: cCtx, canvas: currentCanvas, type: 'currents', scale: I_PEAK * 7, unit: 'A' } // Scale accommodates fault current
+            ];
+
+            canvases.forEach(({ ctx, canvas, type, scale, unit }) => {
+                const width = canvas.width / (window.devicePixelRatio || 1);
+                const height = canvas.height / (window.devicePixelRatio || 1);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawGrid(ctx, canvas, scale, unit);
+                
+                ctx.lineWidth = 2;
+
+                for (let i = 0; i < phases.length; i++) {
+                    const phase = phases[i];
+                    ctx.strokeStyle = phase.color;
+                    ctx.beginPath();
+                    
+                    let firstPoint = true;
+                    for (let x = 0; x < width; x++) {
+                        const t = (x / width) * TIME_SPAN + time;
+                        const waveforms = calculateWaveforms(t, faultType, faultInceptionTime + time);
+                        const value = waveforms[type][phase.name.toLowerCase()];
+                        const y = height / 2 - (value / scale) * (height / 2);
+                        
+                        if (firstPoint) {
+                            ctx.moveTo(x, y);
+                            firstPoint = false;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function animate() {
+            time += 0.0005; // Adjust for speed of animation
+            if (time > TIME_SPAN) {
+                time = 0; // Loop the animation
+            }
+            draw();
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // --- Initial Call and Event Listeners ---
+        faultTypeSelect.addEventListener('change', draw);
+        faultInceptionSlider.addEventListener('input', draw);
+
+        // Initial setup
+        resizeCanvases();
+        animate();
+    });
+    </script>
+</body>
+</html>
