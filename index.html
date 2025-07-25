@@ -139,7 +139,10 @@
         // --- UI Setup ---
         faultInceptionSlider.addEventListener('input', (e) => {
             faultInceptionValue.textContent = `${e.target.value} ms`;
+            draw(); // Redraw immediately on slider change
         });
+        
+        faultTypeSelect.addEventListener('change', draw); // Redraw on fault type change
 
         const createLegend = (containerId, prefix) => {
             const container = document.getElementById(containerId);
@@ -316,19 +319,17 @@
         }
 
         function animate() {
-            // This time variable is now just a phase shift for the animation
-            time += 0.0005; 
-            if (time > 1000) { // Reset time periodically to avoid floating point issues
-                time = 0;
-            }
+            // This time variable is a phase shift for the animation.
+            // Increment time and use modulo to keep it within one cycle period (1/FREQUENCY).
+            // This prevents floating point precision issues with large time values.
+            const period = 1 / FREQUENCY;
+            time = (time + 0.0005) % period; 
+            
             draw();
             animationFrameId = requestAnimationFrame(animate);
         }
 
         // --- Initial Call and Event Listeners ---
-        faultTypeSelect.addEventListener('change', draw);
-        faultInceptionSlider.addEventListener('input', draw);
-
         // Initial setup
         resizeCanvases();
         animate();
