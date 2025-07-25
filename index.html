@@ -118,31 +118,27 @@
         const currentCanvas = document.getElementById('currentCanvas');
         const cCtx = currentCanvas.getContext('2d');
 
-        // --- Simulation Parameters (Updated as per user request) ---
-        const V_PEAK = 13200; // Peak Phase Voltage
-        const I_PEAK = 438;  // Peak Phase Current (437.9A)
-        const FREQUENCY = 50; // Hz
+        // --- Simulation Parameters ---
+        const V_PEAK = 13200;
+        const I_PEAK = 438;
+        const FREQUENCY = 50;
         const OMEGA = 2 * Math.PI * FREQUENCY;
         const TIME_SPAN = 0.1; // 100ms
-        const POWER_FACTOR_ANGLE = -Math.PI / 6; // 30 degrees lagging
-
-        // 'time' is a phase shift for animation
-        let time = 0;
-        let animationFrameId;
+        const POWER_FACTOR_ANGLE = -Math.PI / 6;
 
         const phases = [
-            { name: 'A', color: '#ef4444' }, // Red-500
-            { name: 'B', color: '#eab308' }, // Yellow-500
-            { name: 'C', color: '#3b82f6' }, // Blue-500
+            { name: 'A', color: '#ef4444' },
+            { name: 'B', color: '#eab308' },
+            { name: 'C', color: '#3b82f6' },
         ];
+
+        let animationFrameId;
+        let phaseShift = 0;
 
         // --- UI Setup ---
         faultInceptionSlider.addEventListener('input', (e) => {
             faultInceptionValue.textContent = `${e.target.value} ms`;
-            draw(); // Redraw immediately on slider change
         });
-        
-        faultTypeSelect.addEventListener('change', draw); // Redraw on fault type change
 
         const createLegend = (containerId, prefix) => {
             const container = document.getElementById(containerId);
@@ -161,18 +157,15 @@
         // --- Canvas Sizing and Resizing ---
         function resizeCanvases() {
             const dpr = window.devicePixelRatio || 1;
-            const containerWidth = voltageCanvas.parentElement.clientWidth - 48; // p-6 on parent
+            const containerWidth = voltageCanvas.parentElement.clientWidth - 48;
             
             [voltageCanvas, currentCanvas].forEach(canvas => {
-                const rect = canvas.getBoundingClientRect();
                 canvas.width = containerWidth * dpr;
-                canvas.height = (containerWidth * 0.4) * dpr; // Maintain aspect ratio
+                canvas.height = (containerWidth * 0.4) * dpr;
                 canvas.style.width = `${containerWidth}px`;
                 canvas.style.height = `${containerWidth * 0.4}px`;
-                const ctx = canvas.getContext('2d');
-                ctx.scale(dpr, dpr);
+                canvas.getContext('2d').scale(dpr, dpr);
             });
-            draw(); // Redraw after resize
         }
 
         window.addEventListener('resize', resizeCanvases);
@@ -182,15 +175,13 @@
             const width = canvas.width / (window.devicePixelRatio || 1);
             const height = canvas.height / (window.devicePixelRatio || 1);
             
-            // --- Style for grid and labels ---
-            ctx.strokeStyle = '#374151'; // gray-700
+            ctx.strokeStyle = '#374151';
             ctx.lineWidth = 0.5;
-            ctx.fillStyle = '#9ca3af'; // gray-400
+            ctx.fillStyle = '#9ca3af';
             ctx.font = '12px Inter';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
 
-            // --- Draw vertical lines ---
             for (let i = 0; i <= 20; i++) {
                 const x = i * width / 20;
                 ctx.beginPath();
@@ -199,26 +190,19 @@
                 ctx.stroke();
             }
 
-            // --- Draw horizontal lines and Y-axis labels ---
-            const numYLines = 10; // Total number of horizontal lines
+            const numYLines = 10;
             for (let i = 0; i <= numYLines; i++) {
                 const y = i * height / numYLines;
-                
-                // Draw grid line
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
                 ctx.stroke();
-
-                // Calculate the value for the current line
                 const value = scale - (i * (2 * scale) / numYLines);
-                // Format large numbers into k-units (kV, kA)
                 const displayValue = Math.abs(value) >= 1000 ? `${(value/1000).toFixed(1)}k` : value.toFixed(0);
                 ctx.fillText(`${displayValue}${unit}`, 5, y);
             }
 
-            // --- Redraw center line to be thicker ---
-            ctx.strokeStyle = '#6b7280'; // gray-500
+            ctx.strokeStyle = '#6b7280';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(0, height / 2);
@@ -226,11 +210,9 @@
             ctx.stroke();
         }
 
-        // Refactored to separate animation time from fault condition time
         function calculateWaveforms(waveTime, graphTime, faultType, faultTriggerTime) {
             const isFaulted = graphTime >= faultTriggerTime;
             
-            // --- Base Waveforms (Normal Operation) ---
             let va = V_PEAK * Math.sin(OMEGA * waveTime);
             let vb = V_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3);
             let vc = V_PEAK * Math.sin(OMEGA * waveTime + 2 * Math.PI / 3);
@@ -239,26 +221,25 @@
             let ib = I_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
             let ic = I_PEAK * Math.sin(OMEGA * waveTime + 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
 
-            // --- Apply Fault Conditions ---
             if (isFaulted && faultType !== 'normal') {
                 switch(faultType) {
-                    case 'lg': // Line-to-Ground on A
+                    case 'lg':
                         va = 0;
-                        ia *= 5; // Simplified spike in current
+                        ia *= 5;
                         break;
-                    case 'll': // Line-to-Line on A-B
+                    case 'll':
                         va = vb = (V_PEAK * Math.sin(OMEGA * waveTime) + V_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3)) / 2;
                         ia *= 3;
-                        ib = -ia; // Simplified relationship for L-L fault
-                        ic = 0;   // No current in unfaulted phase
+                        ib = -ia;
+                        ic = 0;
                         break;
-                    case 'llg': // Double Line-to-Ground on A-B
+                    case 'llg':
                         va = 0;
                         vb = 0;
                         ia *= 4;
                         ib *= 4;
                         break;
-                    case 'lll': // Symmetrical Three-Phase
+                    case 'lll':
                         va = 0;
                         vb = 0;
                         vc = 0;
@@ -268,17 +249,16 @@
                         break;
                 }
             }
-
             return { voltages: { a: va, b: vb, c: vc }, currents: { a: ia, b: ib, c: ic } };
         }
 
-        function draw() {
+        function draw(currentPhaseShift) {
             const faultType = faultTypeSelect.value;
-            const faultInceptionTime = parseInt(faultInceptionSlider.value) / 1000; // convert ms to s
+            const faultInceptionTime = parseInt(faultInceptionSlider.value) / 1000;
 
             const canvases = [
                 { ctx: vCtx, canvas: voltageCanvas, type: 'voltages', scale: V_PEAK * 1.1, unit: 'V' },
-                { ctx: cCtx, canvas: currentCanvas, type: 'currents', scale: I_PEAK * 7, unit: 'A' } // Scale accommodates fault current
+                { ctx: cCtx, canvas: currentCanvas, type: 'currents', scale: I_PEAK * 7, unit: 'A' }
             ];
 
             canvases.forEach(({ ctx, canvas, type, scale, unit }) => {
@@ -295,20 +275,16 @@
                     ctx.strokeStyle = phase.color;
                     ctx.beginPath();
                     
-                    let firstPoint = true;
                     for (let x = 0; x < width; x++) {
-                        // graphTime is the time on the x-axis of the plot (0 to TIME_SPAN)
                         const graphTime = (x / width) * TIME_SPAN;
-                        // waveTime includes the animation phase shift
-                        const waveTime = graphTime + time;
+                        const waveTime = graphTime + currentPhaseShift;
                         
                         const waveforms = calculateWaveforms(waveTime, graphTime, faultType, faultInceptionTime);
                         const value = waveforms[type][phase.name.toLowerCase()];
                         const y = height / 2 - (value / scale) * (height / 2);
                         
-                        if (firstPoint) {
+                        if (x === 0) {
                             ctx.moveTo(x, y);
-                            firstPoint = false;
                         } else {
                             ctx.lineTo(x, y);
                         }
@@ -317,22 +293,30 @@
                 }
             });
         }
+        
+        let lastTime = 0;
+        function animate(timestamp) {
+            if (!lastTime) {
+                lastTime = timestamp;
+            }
+            const deltaTime = (timestamp - lastTime) / 1000; // time in seconds
+            lastTime = timestamp;
 
-        function animate() {
-            // This time variable is a phase shift for the animation.
-            // Increment time and use modulo to keep it within one cycle period (1/FREQUENCY).
-            // This prevents floating point precision issues with large time values.
+            // The phase shift determines the speed of the wave scrolling
+            const scrollSpeed = 0.5; // Adjust for faster/slower scroll
+            phaseShift += deltaTime * scrollSpeed;
+
+            // Use modulo to prevent phaseShift from growing infinitely large, which avoids floating point errors
             const period = 1 / FREQUENCY;
-            time = (time + 0.0005) % period; 
-            
-            draw();
+            phaseShift %= period;
+
+            draw(phaseShift);
             animationFrameId = requestAnimationFrame(animate);
         }
 
-        // --- Initial Call and Event Listeners ---
-        // Initial setup
+        // --- Initial Call ---
         resizeCanvases();
-        animate();
+        requestAnimationFrame(animate);
     });
     </script>
 </body>
