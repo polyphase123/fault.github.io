@@ -126,6 +126,7 @@
         const TIME_SPAN = 0.1; // 100ms
         const POWER_FACTOR_ANGLE = -Math.PI / 6; // 30 degrees lagging
 
+        // 'time' is a phase shift for animation
         let time = 0;
         let animationFrameId;
 
@@ -222,29 +223,31 @@
             ctx.stroke();
         }
 
-        function calculateWaveforms(t, faultType, faultTime) {
-            const isFaulted = t >= faultTime;
+        // Refactored to separate animation time from fault condition time
+        function calculateWaveforms(waveTime, graphTime, faultType, faultTriggerTime) {
+            const isFaulted = graphTime >= faultTriggerTime;
             
             // --- Base Waveforms (Normal Operation) ---
-            let va = V_PEAK * Math.sin(OMEGA * t);
-            let vb = V_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3);
-            let vc = V_PEAK * Math.sin(OMEGA * t + 2 * Math.PI / 3);
+            let va = V_PEAK * Math.sin(OMEGA * waveTime);
+            let vb = V_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3);
+            let vc = V_PEAK * Math.sin(OMEGA * waveTime + 2 * Math.PI / 3);
 
-            let ia = I_PEAK * Math.sin(OMEGA * t + POWER_FACTOR_ANGLE);
-            let ib = I_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
-            let ic = I_PEAK * Math.sin(OMEGA * t + 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
+            let ia = I_PEAK * Math.sin(OMEGA * waveTime + POWER_FACTOR_ANGLE);
+            let ib = I_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
+            let ic = I_PEAK * Math.sin(OMEGA * waveTime + 2 * Math.PI / 3 + POWER_FACTOR_ANGLE);
 
             // --- Apply Fault Conditions ---
-            if (isFaulted) {
+            if (isFaulted && faultType !== 'normal') {
                 switch(faultType) {
                     case 'lg': // Line-to-Ground on A
                         va = 0;
                         ia *= 5; // Simplified spike in current
                         break;
                     case 'll': // Line-to-Line on A-B
-                        va = vb = (V_PEAK * Math.sin(OMEGA * t) + V_PEAK * Math.sin(OMEGA * t - 2 * Math.PI / 3)) / 2;
+                        va = vb = (V_PEAK * Math.sin(OMEGA * waveTime) + V_PEAK * Math.sin(OMEGA * waveTime - 2 * Math.PI / 3)) / 2;
                         ia *= 3;
-                        ib = -ia;
+                        ib = -ia; // Simplified relationship for L-L fault
+                        ic = 0;   // No current in unfaulted phase
                         break;
                     case 'llg': // Double Line-to-Ground on A-B
                         va = 0;
@@ -291,8 +294,12 @@
                     
                     let firstPoint = true;
                     for (let x = 0; x < width; x++) {
-                        const t = (x / width) * TIME_SPAN + time;
-                        const waveforms = calculateWaveforms(t, faultType, faultInceptionTime + time);
+                        // graphTime is the time on the x-axis of the plot (0 to TIME_SPAN)
+                        const graphTime = (x / width) * TIME_SPAN;
+                        // waveTime includes the animation phase shift
+                        const waveTime = graphTime + time;
+                        
+                        const waveforms = calculateWaveforms(waveTime, graphTime, faultType, faultInceptionTime);
                         const value = waveforms[type][phase.name.toLowerCase()];
                         const y = height / 2 - (value / scale) * (height / 2);
                         
@@ -309,9 +316,10 @@
         }
 
         function animate() {
-            time += 0.0005; // Adjust for speed of animation
-            if (time > TIME_SPAN) {
-                time = 0; // Loop the animation
+            // This time variable is now just a phase shift for the animation
+            time += 0.0005; 
+            if (time > 1000) { // Reset time periodically to avoid floating point issues
+                time = 0;
             }
             draw();
             animationFrameId = requestAnimationFrame(animate);
