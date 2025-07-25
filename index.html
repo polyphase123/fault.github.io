@@ -121,7 +121,7 @@
         // --- Simulation Parameters ---
         const V_PEAK = 13200;
         const I_PEAK = 438;
-        const FREQUENCY = 50;
+        const FREQUENCY = 60; // Set to 60Hz as requested previously
         const OMEGA = 2 * Math.PI * FREQUENCY;
         const TIME_SPAN = 0.1; // 100ms
         const POWER_FACTOR_ANGLE = -Math.PI / 6;
@@ -135,10 +135,12 @@
         let animationFrameId;
         let phaseShift = 0;
 
-        // --- UI Setup ---
+        // --- UI Setup & Event Listeners ---
         faultInceptionSlider.addEventListener('input', (e) => {
             faultInceptionValue.textContent = `${e.target.value} ms`;
+            draw(); // Redraw immediately for responsiveness
         });
+        faultTypeSelect.addEventListener('change', draw); // Redraw immediately for responsiveness
 
         const createLegend = (containerId, prefix) => {
             const container = document.getElementById(containerId);
@@ -166,6 +168,7 @@
                 canvas.style.height = `${containerWidth * 0.4}px`;
                 canvas.getContext('2d').scale(dpr, dpr);
             });
+            draw(); // Draw once on resize
         }
 
         window.addEventListener('resize', resizeCanvases);
@@ -252,7 +255,9 @@
             return { voltages: { a: va, b: vb, c: vc }, currents: { a: ia, b: ib, c: ic } };
         }
 
-        function draw(currentPhaseShift) {
+        // Refactored draw function to read global phaseShift
+        function draw() {
+            const currentPhaseShift = phaseShift;
             const faultType = faultTypeSelect.value;
             const faultInceptionTime = parseInt(faultInceptionSlider.value) / 1000;
 
@@ -302,15 +307,13 @@
             const deltaTime = (timestamp - lastTime) / 1000; // time in seconds
             lastTime = timestamp;
 
-            // The phase shift determines the speed of the wave scrolling
-            const scrollSpeed = 0.5; // Adjust for faster/slower scroll
+            const scrollSpeed = 0.06; // Reduced by 70% from 0.2 for slower animation
             phaseShift += deltaTime * scrollSpeed;
 
-            // Use modulo to prevent phaseShift from growing infinitely large, which avoids floating point errors
             const period = 1 / FREQUENCY;
             phaseShift %= period;
 
-            draw(phaseShift);
+            draw(); // Call draw without arguments
             animationFrameId = requestAnimationFrame(animate);
         }
 
